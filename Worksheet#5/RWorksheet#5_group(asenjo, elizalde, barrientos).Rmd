@@ -1,0 +1,92 @@
+---
+title: "RWorksheet#5_group(asenjo, elizalde, barrientos)"
+author: "Asenjo, Elizalde, Barrientos"
+date: "2024-11-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(httr)
+
+library(polite)
+
+library(rvest)
+
+library(dplyr)
+
+library(kableExtra)
+```
+
+1.
+```{r}
+
+polite::use_manners(save_as = 'polite_scrape.R')
+
+```
+
+```{r}
+url <- 'https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250'
+
+session <- bow(url,
+               user_agent = "Educational")
+session
+```
+```{r}
+rank_title <- character(0)
+links <- character(0)
+tv_rating <- double(0)
+no._of_votes <- integer(0)
+no._of_episodes <- integer(0)
+year <- integer(0)
+```
+
+
+```{r}
+title_list <- scrape(session) %>%
+  html_nodes('h3.ipc-title__text') %>% 
+  html_text
+
+title_list
+
+```
+```{r}
+class(title_list)
+```
+
+
+```{r}
+title_list_sub <- as.data.frame(title_list[2:51])
+
+tail(title_list_sub)
+```
+
+```{r}
+colnames(title_list_sub) <- "ranks"
+
+s_df <- strsplit(as.character(title_list_sub$ranks),".",fixed = TRUE)
+s_df <- data.frame(do.call(rbind,s_df))
+```
+
+
+```{r}
+s_df <- s_df[-c(3:4)] 
+
+colnames(s_df) <- c("ranks","title") 
+
+str(s_df) 
+```
+```{r}
+class(s_df)
+
+s_df
+
+```
+
+
+
+
+
