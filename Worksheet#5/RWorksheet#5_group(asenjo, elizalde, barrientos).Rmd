@@ -34,6 +34,8 @@ url <- 'https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250'
 session <- bow(url,
                user_agent = "Educational")
 session
+
+webpage <- read_html(url)
 ```
 ```{r}
 rank_title <- character(0)
@@ -50,7 +52,7 @@ title_list <- scrape(session) %>%
   html_nodes('h3.ipc-title__text') %>% 
   html_text
 
-title_list
+title_list[1:50]
 
 ```
 ```{r}
@@ -89,4 +91,119 @@ s_df
 
 
 
+```{r}
+link_list <- read_html(url) %>%
+  html_nodes('a.ipc-title-link-wrapper') %>%
+  html_attr('href')
+
+```
+
+```{r}
+link <- as.vector(link_list[1:50])
+names(link) <- "links"
+```
+
+
+```{r}
+for (i in 1:50) {
+  link[i] <- paste0("https://imdb.com", link[i], sep = "")
+}
+
+links <- as.data.frame(link)
+
+rank_title <- data.frame(
+  rank_title = s_df, link)
+
+scrape_df <- data.frame(rank_title,links)
+names(scrape_df) <- c("Rank","Title","Link")
+
+scrape_df
+```
+
+```{r}
+rating_list <- scrape(session) %>%
+  html_nodes("span.sc-d541859f-1 imUuxf") %>% 
+  html_text()
+
+rating_list
+```
+
+```{r}
+library(rvest)
+library(dplyr)
+
+scrape_amazon_products <- function(base_url, category, num_products = 31) {
+  all_data <- data.frame()
+  page_number <- 1
+  
+  while (nrow(all_data) < num_products) {
+    # Construct the URL for the current page
+    url <- paste0(base_url, "&page=", page_number)
+    message("Scraping: ", url)
+    
+    page <- read_html(url)
+    
+    product_titles <- page %>%
+      html_nodes("span.a-text-normal") %>% 
+      html_text(trim = TRUE)
+    
+    price <- page %>% 
+      html_nodes('.a-price .a-offscreen') %>% 
+      html_text(trim = TRUE)
+    
+    ratings <- page %>% 
+      html_nodes('span.a-icon-alt') %>% 
+      html_text(trim = TRUE)
+    
+    reviews <- page %>%
+      html_nodes('.s-link-style .s-underline-text') %>% 
+      html_text(trim = TRUE)
+    
+    descriptions <- page %>%
+      html_nodes('.a-row.a-size-base.a-color-secondary') %>% 
+      html_text(trim = TRUE)
+    
+    min_length <- min(length(product_titles), length(price), length(ratings), length(descriptions), length(reviews))
+    if (min_length == 0) break  # Exit if no products are found on the page
+    
+    data <- data.frame(
+      ProductTitle = head(product_titles, min_length),
+      Price = head(price, min_length),
+      Category = rep(category, min_length),
+      Ratings = head(ratings, min_length),
+      Reviews = head(reviews, min_length),
+      Description = head(descriptions, min_length)
+    )
+    
+    
+    all_data <- bind_rows(all_data, data)
+    
+    page_number <- page_number + 1
+  }
+  
+  all_data <- head(all_data, num_products)
+  
+  all_data <- all_data[-1, ]
+  
+  all_data$ProductTitle <- paste0(seq_len(nrow(all_data)), ". ", all_data$ProductTitle)
+  
+  return(all_data)
+}
+
+motherboard_url <- "https://www.amazon.com/s?k=motherboard"
+monitor_url <- "https://www.amazon.com/s?k=monitor"
+mouse_url <- "https://www.amazon.com/s?k=mouse"
+keyboard_url <- "https://www.amazon.com/s?k=keyboard"
+headset_url <- "https://www.amazon.com/s?k=headset"
+
+motherboard_products <- scrape_amazon_products(motherboard_url, "Motherboard", 31)
+monitor_products <- scrape_amazon_products(monitor_url, "Monitor", 31)
+mouse_products <- scrape_amazon_products(mouse_url, "Mouse", 31)
+keyboard_products <- scrape_amazon_products(keyboard_url, "Keyboard", 31)
+headset_products <- scrape_amazon_products(headset_url, "Headset", 31)
+
+all_products <- bind_rows(motherboard_products, monitor_products, mouse_products, keyboard_products, headset_products)
+
+all_products
+```
 
