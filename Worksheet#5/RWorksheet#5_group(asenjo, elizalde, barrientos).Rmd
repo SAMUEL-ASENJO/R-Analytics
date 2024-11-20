@@ -19,115 +19,238 @@ library(rvest)
 library(dplyr)
 
 library(kableExtra)
+
+library(ggplot2)
+library(stringr)
 ```
 
 1.
 ```{r}
-
 polite::use_manners(save_as = 'polite_scrape.R')
 
-```
-
-```{r}
 url <- 'https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250'
+
 
 session <- bow(url,
                user_agent = "Educational")
 session
+```
 
+
+```{r}
+# Load necessary libraries
+library(rvest)
+library(dplyr)
+library(stringr)
+
+# Define the URL for IMDb Top TV Shows
+url <- "https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250c"
+
+# Read the webpage content
 webpage <- read_html(url)
-```
-```{r}
-rank_title <- character(0)
-links <- character(0)
-tv_rating <- double(0)
-no._of_votes <- integer(0)
-no._of_episodes <- integer(0)
-year <- integer(0)
-```
 
-
-```{r}
-title_list <- scrape(session) %>%
-  html_nodes('h3.ipc-title__text') %>% 
-  html_text
-
-title_list[1:50]
-
-```
-```{r}
-class(title_list)
-```
-
-
-```{r}
-title_list_sub <- as.data.frame(title_list[2:51])
-
-tail(title_list_sub)
-```
-
-```{r}
-colnames(title_list_sub) <- "ranks"
-
-s_df <- strsplit(as.character(title_list_sub$ranks),".",fixed = TRUE)
-s_df <- data.frame(do.call(rbind,s_df))
-```
-
-
-```{r}
-s_df <- s_df[-c(3:4)] 
-
-colnames(s_df) <- c("ranks","title") 
-
-str(s_df) 
-```
-```{r}
-class(s_df)
-
-s_df
-
-```
-
-
-
-
-```{r}
-link_list <- read_html(url) %>%
-  html_nodes('a.ipc-title-link-wrapper') %>%
-  html_attr('href')
-
-```
-
-```{r}
-link <- as.vector(link_list[1:50])
-names(link) <- "links"
-```
-
-
-```{r}
-for (i in 1:50) {
-  link[i] <- paste0("https://imdb.com", link[i], sep = "")
-}
-
-links <- as.data.frame(link)
-
-rank_title <- data.frame(
-  rank_title = s_df, link)
-
-scrape_df <- data.frame(rank_title,links)
-names(scrape_df) <- c("Rank","Title","Link")
-
-scrape_df
-```
-
-```{r}
-rating_list <- scrape(session) %>%
-  html_nodes("span.sc-d541859f-1 imUuxf") %>% 
+# Extract Show Titles
+show_titles <- webpage %>%
+  html_nodes('h3.ipc-title__text') %>%
   html_text()
 
-rating_list
+# Extract Ratings
+show_ratings <- webpage %>% 
+  html_nodes("span.ipc-rating-star--rating") %>%
+  html_text()
+
+# Extract the number of people who voted
+num_votes <- webpage %>%
+  html_nodes("span.ipc-rating-star--voteCount") %>%
+  html_text()
+
+# Extract Episode Numbers
+episode_info <- webpage %>%
+  html_nodes("span.sc-5bc66c50-6.OOdsw.cli-title-metadata-item") %>%
+  html_text()
+
+# Clean the episode data (extract only the number of episodes)
+episode_counts <- str_extract(episode_info, "\\d+ eps")
+episode_counts <- str_remove(episode_counts, " eps")
+episode_counts <- as.numeric(episode_counts)
+
+# Extract Year of release
+year_info <- webpage %>%
+  html_nodes("span.sc-5bc66c50-6.OOdsw.cli-title-metadata-item") %>%
+  html_text()
+
+# Extract the release year using a regex
+release_years <- str_extract(year_info, "\\d{4}")
+release_years <- release_years[!is.na(release_years)]  # Remove NA values
+release_years <- as.numeric(release_years)
+
+# Check the lengths of all elements
+cat("Show Titles length: ", length(show_titles), "\n")
+cat("Show Ratings length: ", length(show_ratings), "\n")
+cat("Number of Votes length: ", length(num_votes), "\n")
+cat("Episode Counts length: ", length(episode_counts), "\n")
+cat("Release Years length: ", length(release_years), "\n")
+
+# Make sure all data has the same length before combining
+max_length <- max(length(show_titles), length(show_ratings), length(num_votes), length(episode_counts), length(release_years))
+cat("Max length across all data points: ", max_length, "\n")
+
+# Recycle shorter vectors or set them to NA for alignment
+show_titles <- rep(show_titles, length.out = max_length)
+show_ratings <- rep(show_ratings, length.out = max_length)
+num_votes <- rep(num_votes, length.out = max_length)
+episode_counts <- rep(episode_counts, length.out = max_length)
+release_years <- rep(release_years, length.out = max_length)
+
+# Combine into a data frame
+imdb_top_tv_shows <- data.frame(
+  Show_Title = show_titles,
+  Rating = show_ratings,
+  Votes = num_votes,
+  Episode_Count = episode_counts,
+  Release_Year = release_years,
+  stringsAsFactors = FALSE
+)
+
+# Print the data frame
+print(imdb_top_tv_shows)
+
 ```
 
+
+
+2.
+
+```{r}
+# Load necessary libraries
+library(rvest)
+library(dplyr)
+library(stringr)
+
+# Define a function to scrape IMDb reviews
+scrape_imdb_reviews <- function(url) {
+  # Load the page content
+  page <- tryCatch(read_html(url), error = function(e) NULL)
+  if (is.null(page)) {
+    message("Failed to load page: ", url)
+    return(tibble())
+  }
+  
+  # Extract the title of the show using the correct selector
+  show_title <- page %>%
+    html_nodes("h1[data-testid='hero-title-block__title']") %>%
+    html_text(trim = TRUE)
+  
+  # Check if the show title was extracted successfully
+  if (length(show_title) == 0) {
+    message("Failed to extract show title for URL: ", url)
+    show_title <- NA  # Set to NA if the title is not found
+  }
+  
+  # Extract relevant review data
+  reviewers <- page %>% 
+    html_nodes("a.ipc-link.ipc-link--base") %>% 
+    html_text() %>% 
+    .[. != "Permalink"]
+  
+  dates <- page %>% 
+    html_nodes("li.ipc-inline-list__item.review-date") %>% 
+    html_text()
+  
+  ratings <- page %>% 
+    html_nodes("span.ipc-rating-star--rating") %>% 
+    html_text() %>% 
+    as.numeric()
+  
+  titles <- page %>% 
+    html_nodes("h3.ipc-title__text") %>% 
+    html_text()
+  
+  helpful_votes <- page %>% 
+    html_nodes("span.ipc-voting__label__count.ipc-voting__label__count--up") %>% 
+    html_text() %>% 
+    as.numeric()
+  
+  review_texts <- page %>% 
+    html_nodes("div.ipc-html-content-inner-div") %>% 
+    html_text()
+  
+  # Adjust lengths by padding shorter vectors with NA
+  max_length <- max(length(reviewers), length(dates), length(ratings), length(titles), length(helpful_votes), length(review_texts))
+  
+  # Pad vectors with NA if they are shorter than max_length
+  reviewers <- c(reviewers, rep(NA, max_length - length(reviewers)))
+  dates <- c(dates, rep(NA, max_length - length(dates)))
+  ratings <- c(ratings, rep(NA, max_length - length(ratings)))
+  titles <- c(titles, rep(NA, max_length - length(titles)))
+  helpful_votes <- c(helpful_votes, rep(NA, max_length - length(helpful_votes)))
+  review_texts <- c(review_texts, rep(NA, max_length - length(review_texts)))
+  
+  # Combine data into a tibble
+  tibble(
+    show_title = rep(show_title, max_length),  # Add the show title to each review
+    reviewer_name = reviewers,
+    review_date = dates,
+    rating = ratings,
+    review_title = titles,
+    helpful_votes = helpful_votes,
+    review_text = review_texts
+  )
+}
+
+# List of IMDb links
+links <- c(
+  "https://www.imdb.com/title/tt11126994/reviews/?ref_=tt_urv_sm",
+  "https://www.imdb.com/title/tt0903747/reviews/?ref_=tt_urv_sm",
+  "https://www.imdb.com/title/tt5491994/reviews/?ref_=tt_urv_sm",
+  "https://www.imdb.com/title/tt0795176/reviews/?ref_=tt_urv_sm",
+  "https://www.imdb.com/title/tt0185906/reviews/?ref_=tt_urv_sm"
+)
+
+# Initialize an empty tibble
+all_reviews <- tibble()
+
+# Loop through each link and scrape reviews
+for (link in links) {
+  reviews <- scrape_imdb_reviews(link)
+  if (nrow(reviews) > 0) {
+    all_reviews <- bind_rows(all_reviews, reviews)
+  }
+  
+  # Limit to the first 20 reviews
+  if (nrow(all_reviews) >= 20) {
+    all_reviews <- all_reviews %>% slice(1:20)
+    break
+  }
+}
+
+# View the collected reviews with the show title
+print(all_reviews)
+
+
+```
+3.
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Count the number of TV shows released per year
+tv_shows_by_year <- imdb_top_tv_shows %>%
+  group_by(Release_Year) %>%
+  summarise(Number_of_Shows = n())
+
+# Plot the time series graph
+ggplot(tv_shows_by_year, aes(x = Release_Year, y = Number_of_Shows)) +
+  geom_line() +  # Add a line plot
+  geom_point() +  # Add points at each data point
+  labs(title = "Number of TV Shows Released by Year",
+       x = "Year",
+       y = "Number of TV Shows Released") +
+  theme_minimal()
+
+```
+4 and 5
 ```{r}
 library(rvest)
 library(dplyr)
