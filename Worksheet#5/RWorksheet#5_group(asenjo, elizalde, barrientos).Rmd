@@ -112,8 +112,11 @@ imdb_top_tv_shows <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Print the data frame
-print(imdb_top_tv_shows)
+top_50_shows <- imdb_top_tv_shows %>%
+  slice(1:50)
+
+# Print the top 50 shows
+print(top_50_shows)
 
 ```
 
@@ -251,6 +254,21 @@ ggplot(tv_shows_by_year, aes(x = Release_Year, y = Number_of_Shows)) +
 
 ```
 4 and 5
+
+
+
+
+```{r}
+polite::use_manners(save_as = 'polite_scrape.R')
+
+url <- 'https://www.amazon.com'
+
+
+session <- bow(url,
+               user_agent = "Educational")
+session
+```
+
 ```{r}
 library(rvest)
 library(dplyr)
@@ -329,4 +347,5 @@ all_products <- bind_rows(motherboard_products, monitor_products, mouse_products
 
 all_products
 ```
+
 
