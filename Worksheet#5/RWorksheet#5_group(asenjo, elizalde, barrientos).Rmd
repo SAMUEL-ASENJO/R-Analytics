@@ -37,11 +37,13 @@ session
 ```
 
 
+
 ```{r}
 # Load necessary libraries
 library(rvest)
 library(dplyr)
 library(stringr)
+library(rmarkdown)
 
 # Define the URL for IMDb Top TV Shows
 url <- "https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250c"
@@ -53,6 +55,8 @@ webpage <- read_html(url)
 show_titles <- webpage %>%
   html_nodes('h3.ipc-title__text') %>%
   html_text()
+
+show_titles <- show_titles[show_titles != "IMDb Charts"]
 
 # Extract Ratings
 show_ratings <- webpage %>% 
@@ -66,17 +70,16 @@ num_votes <- webpage %>%
 
 # Extract Episode Numbers
 episode_info <- webpage %>%
-  html_nodes("span.sc-5bc66c50-6.OOdsw.cli-title-metadata-item") %>%
+  html_nodes('span.sc-300a8231-7.eaXxft.cli-title-metadata-item:nth-of-type(2)') %>%
   html_text()
 
 # Clean the episode data (extract only the number of episodes)
 episode_counts <- str_extract(episode_info, "\\d+ eps")
 episode_counts <- str_remove(episode_counts, " eps")
-episode_counts <- as.numeric(episode_counts)
 
 # Extract Year of release
 year_info <- webpage %>%
-  html_nodes("span.sc-5bc66c50-6.OOdsw.cli-title-metadata-item") %>%
+  html_nodes('span.sc-300a8231-7.eaXxft.cli-title-metadata-item') %>%
   html_text()
 
 # Extract the release year using a regex
@@ -84,23 +87,62 @@ release_years <- str_extract(year_info, "\\d{4}")
 release_years <- release_years[!is.na(release_years)]  # Remove NA values
 release_years <- as.numeric(release_years)
 
-# Check the lengths of all elements
-cat("Show Titles length: ", length(show_titles), "\n")
-cat("Show Ratings length: ", length(show_ratings), "\n")
-cat("Number of Votes length: ", length(num_votes), "\n")
-cat("Episode Counts length: ", length(episode_counts), "\n")
-cat("Release Years length: ", length(release_years), "\n")
+# Function to scrape critic reviews for each show
+get_critic_reviews <- function(link) {
+  complete_link <- paste0("https://imdb.com", link)
+  show_page <- read_html(complete_link)
+  
+  # Extract critic reviews
+  critic <- show_page %>%
+    html_nodes("span.score") %>%  # Adjust this if necessary based on page structure
+    html_text()
+  
+  # Return the second critic review (if available)
+  if (length(critic) > 1) {
+    return(critic[2])  # Take the second item for the critic score
+  } else {
+    return(NA)  # If no critic review is found
+  }
+}
 
-# Make sure all data has the same length before combining
-max_length <- max(length(show_titles), length(show_ratings), length(num_votes), length(episode_counts), length(release_years))
-cat("Max length across all data points: ", max_length, "\n")
+# Function to scrape popularity rating for each show
+get_popularity_rating <- function(link) {
+  complete_link <- paste0("https://imdb.com", link)
+  show_page <- read_html(complete_link)
+  
+  # Extract popularity rating
+  pop_rating <- show_page %>%
+    html_nodes('[data-testid="hero-rating-bar__popularity__score"]') %>%
+    html_text()
+  
+  # Return the popularity rating (if available)
+  if (length(pop_rating) > 1) {
+    return(pop_rating[2])  # The second item should be the popularity rating
+  } else {
+    return(NA)  # If no popularity rating is found
+  }
+}
 
-# Recycle shorter vectors or set them to NA for alignment
+# Extract links to each show's page
+links <- webpage %>%
+  html_nodes("a.ipc-title-link-wrapper") %>%
+  html_attr("href")
+
+# Loop through each show's link and get the critic reviews
+critic_reviews <- sapply(links, get_critic_reviews)
+
+# Loop through each show's link and get the popularity rating
+popularity_ratings <- sapply(links, get_popularity_rating)
+
+# Ensure all data has the same length before combining
+max_length <- max(length(show_titles), length(show_ratings), length(num_votes), length(episode_counts), length(release_years), length(critic_reviews), length(popularity_ratings))
 show_titles <- rep(show_titles, length.out = max_length)
 show_ratings <- rep(show_ratings, length.out = max_length)
 num_votes <- rep(num_votes, length.out = max_length)
 episode_counts <- rep(episode_counts, length.out = max_length)
 release_years <- rep(release_years, length.out = max_length)
+critic_reviews <- rep(critic_reviews, length.out = max_length)
+popularity_ratings <- rep(popularity_ratings, length.out = max_length)
 
 # Combine into a data frame
 imdb_top_tv_shows <- data.frame(
@@ -109,17 +151,20 @@ imdb_top_tv_shows <- data.frame(
   Votes = num_votes,
   Episode_Count = episode_counts,
   Release_Year = release_years,
+  Critic_Reviews = critic_reviews,
+  Popularity_Rating = popularity_ratings,
   stringsAsFactors = FALSE
 )
 
 top_50_shows <- imdb_top_tv_shows %>%
-  slice(1:50)
+  slice(1:50)  # Get the top 50 shows
 
 # Print the top 50 shows
 print(top_50_shows)
 
-```
+write.csv(top_50_shows, "Top_50_shows.csv")
 
+```
 
 
 2.
@@ -203,32 +248,34 @@ scrape_imdb_reviews <- function(url) {
 
 # List of IMDb links
 links <- c(
-  "https://www.imdb.com/title/tt11126994/reviews/?ref_=tt_urv_sm",
+  "https://www.imdb.com/title/tt7366338/reviews/?ref_=tt_urv_sm",
   "https://www.imdb.com/title/tt0903747/reviews/?ref_=tt_urv_sm",
   "https://www.imdb.com/title/tt5491994/reviews/?ref_=tt_urv_sm",
   "https://www.imdb.com/title/tt0795176/reviews/?ref_=tt_urv_sm",
   "https://www.imdb.com/title/tt0185906/reviews/?ref_=tt_urv_sm"
 )
 
-# Initialize an empty tibble
+# Initialize an empty tibble to store all reviews
 all_reviews <- tibble()
 
 # Loop through each link and scrape reviews
 for (link in links) {
   reviews <- scrape_imdb_reviews(link)
+  
+  # Check if reviews are scraped successfully and limit to 20 reviews per link
   if (nrow(reviews) > 0) {
+    reviews <- reviews %>% slice(1:20)  # Limit to the first 20 reviews per link
     all_reviews <- bind_rows(all_reviews, reviews)
   }
   
-  # Limit to the first 20 reviews
-  if (nrow(all_reviews) >= 20) {
-    all_reviews <- all_reviews %>% slice(1:20)
-    break
-  }
+
 }
 
-# View the collected reviews with the show title
+# View the first 20 reviews after scraping all links
 print(all_reviews)
+
+
+write.csv(all_reviews, "IMDb_reviews.csv")
 
 
 ```
@@ -273,7 +320,7 @@ session
 library(rvest)
 library(dplyr)
 
-scrape_amazon_products <- function(base_url, category, num_products = 31) {
+scrape_amazon_products <- function(base_url, category, num_products = 30) {
   all_data <- data.frame()
   page_number <- 1
   
@@ -288,6 +335,8 @@ scrape_amazon_products <- function(base_url, category, num_products = 31) {
       html_nodes("span.a-text-normal") %>% 
       html_text(trim = TRUE)
     
+    product_titles <- product_titles[product_titles != "Check each product page for other buying options."]
+
     price <- page %>% 
       html_nodes('.a-price .a-offscreen') %>% 
       html_text(trim = TRUE)
@@ -295,14 +344,16 @@ scrape_amazon_products <- function(base_url, category, num_products = 31) {
     ratings <- page %>% 
       html_nodes('span.a-icon-alt') %>% 
       html_text(trim = TRUE)
-    
+
     reviews <- page %>%
       html_nodes('.s-link-style .s-underline-text') %>% 
       html_text(trim = TRUE)
     
     descriptions <- page %>%
-      html_nodes('.a-row.a-size-base.a-color-secondary') %>% 
+      html_nodes("span.a-text-normal") %>% 
       html_text(trim = TRUE)
+    
+    descriptions <- descriptions[descriptions != "Check each product page for other buying options."]
     
     min_length <- min(length(product_titles), length(price), length(ratings), length(descriptions), length(reviews))
     if (min_length == 0) break  # Exit if no products are found on the page
@@ -324,8 +375,7 @@ scrape_amazon_products <- function(base_url, category, num_products = 31) {
   
   all_data <- head(all_data, num_products)
   
-  all_data <- all_data[-1, ]
-  
+
   all_data$ProductTitle <- paste0(seq_len(nrow(all_data)), ". ", all_data$ProductTitle)
   
   return(all_data)
@@ -337,15 +387,747 @@ mouse_url <- "https://www.amazon.com/s?k=mouse"
 keyboard_url <- "https://www.amazon.com/s?k=keyboard"
 headset_url <- "https://www.amazon.com/s?k=headset"
 
-motherboard_products <- scrape_amazon_products(motherboard_url, "Motherboard", 31)
-monitor_products <- scrape_amazon_products(monitor_url, "Monitor", 31)
-mouse_products <- scrape_amazon_products(mouse_url, "Mouse", 31)
-keyboard_products <- scrape_amazon_products(keyboard_url, "Keyboard", 31)
-headset_products <- scrape_amazon_products(headset_url, "Headset", 31)
+motherboard_products <- scrape_amazon_products(motherboard_url, "Motherboard", 30)
+monitor_products <- scrape_amazon_products(monitor_url, "Monitor", 30)
+mouse_products <- scrape_amazon_products(mouse_url, "Mouse", 30)
+keyboard_products <- scrape_amazon_products(keyboard_url, "Keyboard", 30)
+headset_products <- scrape_amazon_products(headset_url, "Headset", 30)
 
 all_products <- bind_rows(motherboard_products, monitor_products, mouse_products, keyboard_products, headset_products)
 
 all_products
 ```
+
+
+```{r}
+# Load required libraries
+library(rvest)
+library(dplyr)
+
+# Define product links, product names, and category
+product_links <- c(
+  "https://www.amazon.com/TeckNet-Portable-Wireless-Receiver-Adjustment/dp/B001DHECXA/ref=sr_1_2_sspa",
+  "https://www.amazon.com/EVGA-Customizable-Profiles-Ambidextrous-905-W1-12WH-KR/dp/B09QBYWN8T/ref=sr_1_3",
+  "https://www.amazon.com/Logitech-Wireless-Mouse-M185-Swift/dp/B004YAVF8I/ref=sr_1_4",
+  "https://www.amazon.com/Logitech-LIGHTSPEED-Wireless-Gaming-Mouse/dp/B07CMS5Q6P/ref=sr_1_5",
+  "https://www.amazon.com/Razer-Basilisk-Customizable-Ergonomic-Gaming/dp/B09C13PZX7/ref=sr_1_6",
+  "https://www.amazon.com/Micropack-Vertical-Multi-Device-Bluetooth-Adjustable/dp/B0C7GMQRW3/ref=sr_1_17",
+  "https://www.amazon.com/RAPIQUE-Bluetooth-Wireless-Mouse-Compatibility/dp/B0CYZ2VKGP/ref=sr_1_18",
+  "https://www.amazon.com/ASUS-ROG-Wireless-Magnetic-Programmable/dp/B09726KT4R/ref=sr_1_20",
+  "https://www.amazon.com/Logitech-910-005867-M575-Latin-America/dp/B08TLYK78K/ref=sr_1_21",
+  "https://www.amazon.com/Logitech-Superlight-Lightspeed-Lightweight-Programmable/dp/B09NBWL8J5/ref=sr_1_22"
+)
+
+product_names <- c(
+  "TeckNet Portable Wireless Mouse",
+  "EVGA Customizable Ambidextrous Mouse",
+  "Logitech Wireless Mouse M185",
+  "Logitech LIGHTSPEED Wireless Gaming Mouse",
+  "Razer Basilisk Customizable Ergonomic Gaming Mouse",
+  "Micropack-Vertical-Multi-Device-Bluetooth-Adjustable",
+  "RAPIQUE-Bluetooth-Wireless-Mouse-Compatibility",
+  "ASUS-ROG-Wireless-Magnetic-Programmable",
+  "Logitech-910-005867-M575-Latin-America",
+  "Logitech-Superlight-Lightspeed-Lightweight-Programmable"
+  
+)
+
+category <- "Mouse"
+
+# Initialize an empty dataframe to store all reviews
+all_reviews <- data.frame()
+
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes(".review-vp-label") %>%
+    html_text(trim = TRUE)
+  
+  
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+  
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+
+
+
+```
+
+
+```{r}
+# Load required libraries
+library(rvest)
+library(dplyr)
+
+# Define product links, product names, and category
+product_links <- c(
+  "https://www.amazon.com/MSI-MAG-B550-TOMAHAWK-Motherboard/dp/B089CWDHFZ/ref=sr_1_1",
+  "https://www.amazon.com/JUXIESHI-Motheboard-Support-Desktop-HDMI-Compatible/dp/B0CYBX123R/ref=sr_1_2",
+  "https://www.amazon.com/ASUS-ROG-Strix-Gaming-Motherboard/dp/B08F9VP2RC/ref=sr_1_3",
+  "https://www.amazon.com/ASUS-TUF-Intel%C2%AE12th-Motherboard-Thunderbolt/dp/B0BQD58D96/ref=sr_1_4",
+  "https://www.amazon.com/MSI-B550-Gaming-GEN3-Motherboard/dp/B0BHCL4YVS/ref=sr_1_5",
+  "https://www.amazon.com/ASUS-B550-PLUS-Motherboard-DisPlayPort-Addressable/dp/B089CT5GDM/ref=sr_1_6",
+  "https://www.amazon.com/GIGABYTE-B650-Warranty-EZ-Latch-Motherboard/dp/B0BH7GTY9C/ref=sr_1_7",
+  "https://www.amazon.com/MSI-B760-Motherboard-Supports-Processors/dp/B0C15THTK7/ref=sr_1_8",
+  "https://www.amazon.com/GIGABYTE-B760M-DDR4-Motherboard-EZ-Latch/dp/B0D54QJ9CJ/ref=sr_1_9",
+  "https://www.amazon.com/MSI-B650-Tomahawk-Motherboard-Processors/dp/B0BHCCNSRH/ref=sr_1_10"
+)
+
+product_names <- c(
+  "MSI-MAG-B550-TOMAHAWK-Motherboard",
+  "JUXIESHI-Motheboard-Support-Desktop-HDMI-Compatible",
+  "ASUS-ROG-Strix-Gaming-Motherboard",
+  "ASUS-TUF-Intel%C2%AE12th-Motherboard-Thunderbolt",
+  "MSI-B550-Gaming-GEN3-Motherboard",
+  "ASUS-B550-PLUS-Motherboard-DisPlayPort-Addressable",
+  "GIGABYTE-B650-Warranty-EZ-Latch-Motherboard",
+  "MSI-B760-Motherboard-Supports-Processors",
+  "GIGABYTE-B760M-DDR4-Motherboard-EZ-Latch",
+  "MSI-B650-Tomahawk-Motherboard-Processors"
+  
+)
+
+category <- "MOTHERBOARD"
+
+# Initialize an empty dataframe to store all reviews
+all_reviews <- data.frame()
+
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes(".review-vp-label") %>%
+    html_text(trim = TRUE)
+  
+  ratings <- reviews %>%
+    html_nodes('i.a-icon-star span') %>%
+    html_text(trim = TRUE)
+  
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+  
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+```
+
+```{r}
+# Load required libraries
+library(rvest)
+library(dplyr)
+
+# Define product links, product names, and category
+product_links <- c(
+  "https://www.amazon.com/AmazonBasics-Matte-Keyboard-QWERTY-Layout/dp/B07WJ5D3H4/ref=sr_1_1",
+  "https://www.amazon.com/RedThunder-Wireless-Rechargeable-Mechanical-Anti-ghosting/dp/B09BR46F63/ref=sr_1_2",
+  "https://www.amazon.com/SteelSeries-Worlds-Fastest-Mechanical-Keyboard/dp/B0BF64DN6H/ref=sr_1_3",
+  "https://www.amazon.com/AmazonBasics-Matte-Keyboard-QWERTY-Layout/dp/B07WJ5D3H4/ref=sr_1_4",
+  "https://www.amazon.com/Redragon-S101-Keyboard-Ergonomic-Programmable/dp/B00NLZUM36/ref=sr_1_5",
+  "https://www.amazon.com/Logitech-Programmable-Backlighting-Bluetooth-Rechargeable/dp/B0BKW3LB2B/ref=sr_1_6",
+  "https://www.amazon.com/Amazon-Basics-Extension-Keyboard-Transfer/dp/B00NH13Q8W/ref=sr_1_7",
+  "https://www.amazon.com/Rii-Multiple-Mechanical-Multimedia-Keyboard/dp/B0CCZWCPRQ/ref=sr_1_8",
+  "https://www.amazon.com/Portable-Mechanical-Keyboard-MageGee-Backlit/dp/B098LG3N6R/ref=sr_1_9",
+  "https://www.amazon.com/AULA-F2088-Mechanical-Removable-Keyboards/dp/B09DKQWTNC/ref=sr_1_10"
+)
+
+product_names <- c(
+  "AmazonBasics-Matte-Keyboard-QWERTY-Layout",
+  "RedThunder-Wireless-Rechargeable-Mechanical-Anti-ghosting",
+  "SteelSeries-Worlds-Fastest-Mechanical-Keyboard",
+  "AmazonBasics-Matte-Keyboard-QWERTY-Layout",
+  "Redragon-S101-Keyboard-Ergonomic-Programmable",
+  "Logitech-Programmable-Backlighting-Bluetooth-Rechargeable",
+  "Amazon-Basics-Extension-Keyboard-Transfer",
+  "Rii-Multiple-Mechanical-Multimedia-Keyboard",
+  "Portable-Mechanical-Keyboard-MageGee-Backlit",
+  "AULA-F2088-Mechanical-Removable-Keyboards"
+  
+)
+
+category <- "KEYBOARD"
+
+# Initialize an empty dataframe to store all reviews
+all_reviews <- data.frame()
+
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes('span.a-size-mini a-color-state a-text-bold') %>%
+    html_text(trim = TRUE)
+  
+  ratings <- reviews %>%
+    html_nodes('i.a-icon-star span') %>%
+    html_text(trim = TRUE)
+  
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+  
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+```
+
+```{r}
+# Load required libraries
+library(rvest)
+library(dplyr)
+
+# Define product links, product names, and category
+product_links <- c(
+ "https://www.amazon.com/Amazon-Basics-Monitor-Compatible-Speakers/dp/B0CP7RZRMD/ref=sr_1_1",
+ "https://www.amazon.com/KOORUI-Speakers-Adpitive-Compatible-S01/dp/B0C38FJ6HY/ref=sr_1_2",
+ "https://www.amazon.com/PHILIPS-Adaptive-Replacement-Warranty-221V8LB/dp/B0CVM2GJCN/ref=sr_1_3",
+ "https://www.amazon.com/Sceptre-DisplayPort-FreeSync-Frameless-E275W-FW100T/dp/B0CHHSFMRL/ref=sr_1_4",
+ "https://www.amazon.com/SAMSUNG-27-inch-Border-Less-FreeSync-LF27T350FHNXZA/dp/B08FF3JQ28/ref=sr_1_5",
+ "https://www.amazon.com/acer-Zero-Frame-Adaptive-Sync-FreeSync-Compatible/dp/B0D9MK23S7/ref=sr_1_6",
+ "https://www.amazon.com/Amazon-Basics-75hz-Panel-Monitor/dp/B08WJ26WP6/ref=sr_1_7",
+ "https://www.amazon.com/Sceptre-Curved-Monitor-Speakers-C248W-1920RN/dp/B07KXSR99Y/ref=sr_1_8",
+ "https://www.amazon.com/Viewedge-Professional-Monitor-Protection-Adaptive/dp/B0B8BYXXSC/ref=sr_1_9",
+ "https://www.amazon.com/Sceptre-24-5-inch-DisplayPort-Speakers-C255B-FWT240/dp/B0BTKJFRDV/ref=sr_1_10"
+)
+
+product_names <- c(
+  "Amazon-Basics-Monitor-Compatible-Speakers",
+  "KOORUI-Speakers-Adpitive-Compatible-S01",
+  "PHILIPS-Adaptive-Replacement-Warranty-221V8LB",
+  "Sceptre-DisplayPort-FreeSync-Frameless-E275W-FW100T",
+  "SAMSUNG-27-inch-Border-Less-FreeSync-LF27T350FHNXZA",
+  "acer-Zero-Frame-Adaptive-Sync-FreeSync-Compatible",
+  "Amazon-Basics-75hz-Panel-Monitor",
+  "Sceptre-Curved-Monitor-Speakers-C248W-1920RN",
+  "Viewedge-Professional-Monitor-Protection-Adaptive",
+  "Sceptre-24-5-inch-DisplayPort-Speakers-C255B-FWT240"
+)
+
+category <- "MONITOR"
+
+# Initialize an empty dataframe to store all reviews
+all_reviews <- data.frame()
+
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes('span.a-size-mini a-color-state a-text-bold') %>%
+    html_text(trim = TRUE)
+  
+  ratings <- reviews %>%
+    html_nodes('i.a-icon-star span') %>%
+    html_text(trim = TRUE)
+  
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+  
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+```
+
+
+
+```{r}
+# Load required libraries
+library(rvest)
+library(dplyr)
+
+# Define product links, product names, and category
+product_links <- c(
+ "https://www.amazon.com/Microphone-Cancelling-Over-Ear-Headphones-Computer/dp/B0C1GTXY5S/ref=sr_1_1",
+ "https://www.amazon.com/OneOdio-PRO1030-DJ-Headphone-Black/dp/B01N6ZJH96/ref=sr_1_2",
+ "https://www.amazon.com/JBL-Quantum-400-Headphones-Game-Chat/dp/B084CZDX61/ref=sr_1_3",
+ "https://www.amazon.com/Razer-BlackShark-V2-Gaming-Headset/dp/B09PZG4R17/ref=sr_1_4",
+ "https://www.amazon.com/Turtle-Gaming-Headset-PlayStation-Nintendo-Console/dp/B00YXO5U40/ref=sr_1_5",
+ "https://www.amazon.com/CORSAIR-SURROUND-Multiplatform-Gaming-Headset/dp/B09YHQ3Y61/ref=sr_1_6",
+ "https://www.amazon.com/Fachixy-Gaming-Headset-Canceling-Microphone/dp/B09C5MDY2Y/ref=sr_1_7",
+ "https://www.amazon.com/BENGOO-G9000-Controller-Cancelling-Headphones/dp/B01H6GUCCQ/ref=sr_1_8",
+ "https://www.amazon.com/Stealth-Wireless-Multiplatform-Amplified-Headset-Nintendo/dp/B0CYWFH5Y9/ref=sr_1_9",
+ "https://www.amazon.com/Logitech-Wireless-Lightspeed-Headset-Headphone/dp/B081PP4CB6/ref=sr_1_10"
+)
+
+product_names <- c(
+  "Microphone-Cancelling-Over-Ear-Headphones-Computer",
+  "OneOdio-PRO1030-DJ-Headphone-Black",
+  "JBL-Quantum-400-Headphones-Game-Chat",
+  "Razer-BlackShark-V2-Gaming-Headset",
+  "Turtle-Gaming-Headset-PlayStation-Nintendo-Console",
+  "CORSAIR-SURROUND-Multiplatform-Gaming-Headset",
+  "Fachixy-Gaming-Headset-Canceling-Microphone",
+  "BENGOO-G9000-Controller-Cancelling-Headphones",
+  "Stealth-Wireless-Multiplatform-Amplified-Headset-Nintendo",
+  "Logitech-Wireless-Lightspeed-Headset-Headphone"
+)
+
+category <- "HEADSET"
+
+# Initialize an empty dataframe to store all reviews
+all_reviews <- data.frame()
+
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes('span.a-size-mini a-color-state a-text-bold') %>%
+    html_text(trim = TRUE)
+  
+  ratings <- reviews %>%
+    html_nodes('i.a-icon-star span') %>%
+    html_text(trim = TRUE)
+
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+```
+
+```{r}
+# Loop through each product link
+for (i in seq_along(product_links)) {
+  # Extract current link and product name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Scrape the webpage
+  webpage <- read_html(url)
+  
+  # Extract the review section
+  reviews <- webpage %>%
+    html_nodes(".review")  # Update this if the structure changes
+  
+  # Extract reviewer names
+  reviewer_names <- reviews %>%
+    html_nodes(".a-profile-name") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review dates
+  review_dates <- reviews %>%
+    html_nodes(".review-date") %>%
+    html_text(trim = TRUE)
+  
+  # Extract review comments
+  review_comments <- reviews %>%
+    html_nodes(".review-text-content span") %>%
+    html_text(trim = TRUE)
+  
+  # Extract if the purchase is verified
+  verified_purchases <- reviews %>%
+    html_nodes('span.a-size-mini.a-color-state.a-text-bold') %>%
+    html_text(trim = TRUE)
+  
+  # Extract review ratings
+  ratings <- reviews %>%
+    html_nodes('i.a-icon-star span') %>%
+    html_text(trim = TRUE)
+  
+  # Limit to the first 20 reviews for each category
+  reviewer_names <- head(reviewer_names, 20)
+  review_dates <- head(review_dates, 20)
+  review_comments <- head(review_comments, 20)
+  verified_purchases <- head(verified_purchases, 20)
+  ratings <- head(ratings, 20)
+  
+  # Align lengths by padding with NA if needed
+  max_length <- max(length(reviewer_names), length(review_dates), length(review_comments), length(verified_purchases), length(ratings))
+  reviewer_names <- c(reviewer_names, rep(NA, max_length - length(reviewer_names)))
+  review_dates <- c(review_dates, rep(NA, max_length - length(review_dates)))
+  review_comments <- c(review_comments, rep(NA, max_length - length(review_comments)))
+  verified_purchases <- c(verified_purchases, rep(NA, max_length - length(verified_purchases)))
+  ratings <- c(ratings, rep(NA, max_length - length(ratings)))
+  
+  # Create a dataframe for the current product
+  review_data <- data.frame(
+    Category = rep(category, max_length),
+    ProductName = rep(product_name, max_length),
+    Reviewer = reviewer_names,
+    Date = review_dates,
+    Comment = review_comments,
+    VerifiedPurchase = verified_purchases,
+    Rating = ratings,
+    stringsAsFactors = FALSE
+  )
+  
+  # Append to the main dataframe
+  all_reviews <- bind_rows(all_reviews, review_data)
+}
+
+# Display the combined dataframe
+print(all_reviews)
+
+```
+
+
+```{r}
+# Load necessary libraries
+library(rvest)
+library(dplyr)
+library(stringr)
+
+# Define product links and product names
+product_links <- c(
+  "https://www.amazon.com/TeckNet-Portable-Wireless-Receiver-Adjustment/dp/B001DHECXA/ref=sr_1_2_sspa",
+  "https://www.amazon.com/EVGA-Customizable-Profiles-Ambidextrous-905-W1-12WH-KR/dp/B09QBYWN8T/ref=sr_1_3",
+  "https://www.amazon.com/Logitech-Wireless-Mouse-M185-Swift/dp/B004YAVF8I/ref=sr_1_4",
+  "https://www.amazon.com/Logitech-LIGHTSPEED-Wireless-Gaming-Mouse/dp/B07CMS5Q6P/ref=sr_1_5",
+  "https://www.amazon.com/Razer-Basilisk-Customizable-Ergonomic-Gaming/dp/B09C13PZX7/ref=sr_1_6",
+  "https://www.amazon.com/Micropack-Vertical-Multi-Device-Bluetooth-Adjustable/dp/B0C7GMQRW3/ref=sr_1_17",
+  "https://www.amazon.com/RAPIQUE-Bluetooth-Wireless-Mouse-Compatibility/dp/B0CYZ2VKGP/ref=sr_1_18",
+  "https://www.amazon.com/ASUS-ROG-Wireless-Magnetic-Programmable/dp/B09726KT4R/ref=sr_1_20",
+  "https://www.amazon.com/Logitech-910-005867-M575-Latin-America/dp/B08TLYK78K/ref=sr_1_21",
+  "https://www.amazon.com/Logitech-Superlight-Lightspeed-Lightweight-Programmable/dp/B09NBWL8J5/ref=sr_1_22"
+)
+
+product_names <- c(
+  "TeckNet Portable Wireless Mouse",
+  "EVGA Customizable Ambidextrous Mouse",
+  "Logitech Wireless Mouse M185",
+  "Logitech LIGHTSPEED Wireless Gaming Mouse",
+  "Razer Basilisk Customizable Ergonomic Gaming Mouse",
+  "Micropack Vertical Multi-Device Bluetooth Adjustable",
+  "RAPIQUE Bluetooth Wireless Mouse Compatibility",
+  "ASUS ROG Wireless Magnetic Programmable",
+  "Logitech 910-005867 M575 Latin America",
+  "Logitech Superlight Lightspeed Lightweight Programmable"
+)
+
+category <- "Mouse"
+
+# Initialize an empty dataframe
+all_reviews <- data.frame()
+
+# Loop through each product
+for (i in seq_along(product_links)) {
+  # Get the product link and name
+  url <- product_links[i]
+  product_name <- product_names[i]
+  
+  # Try scraping reviews
+  try({
+    webpage <- read_html(url)
+    
+    # Extract review sections
+    reviews <- webpage %>%
+      html_nodes(".review")
+    
+    # Extract reviewer names
+    reviewer_names <- reviews %>%
+      html_nodes(".a-profile-name") %>%
+      html_text(trim = TRUE)
+    
+    # Extract review dates
+    review_dates <- reviews %>%
+      html_nodes(".review-date") %>%
+      html_text(trim = TRUE)
+    
+    # Extract review titles
+    review_titles <- reviews %>%
+      html_nodes(".review-title span") %>%
+      html_text(trim = TRUE)
+    
+    # Extract review comments
+    review_comments <- reviews %>%
+      html_nodes(".review-text-content span") %>%
+      html_text(trim = TRUE)
+    
+    # Extract verified purchase labels
+    verified_purchases <- reviews %>%
+      html_nodes(".review-vp-label") %>%
+      html_text(trim = TRUE)
+    
+    # Extract star ratings
+    star_ratings <- reviews %>%
+      html_nodes(".a-icon-alt") %>%
+      html_text(trim = TRUE) %>%
+      str_extract("\\d\\.\\d") %>%  # Extract the numeric rating
+      as.numeric()
+    
+    # Limit to the first 20 reviews
+    max_reviews <- min(20, length(reviewer_names))
+    reviewer_names <- reviewer_names[1:max_reviews]
+    review_dates <- review_dates[1:max_reviews]
+    review_titles <- review_titles[1:max_reviews]
+    review_comments <- review_comments[1:max_reviews]
+    verified_purchases <- verified_purchases[1:max_reviews]
+    star_ratings <- star_ratings[1:max_reviews]
+    
+    # Create a dataframe for this product
+    review_data <- data.frame(
+      Category = rep(category, max_reviews),
+      ProductName = rep(product_name, max_reviews),
+      Reviewer = reviewer_names,
+      Date = review_dates,
+      Title = review_titles,
+      Comment = review_comments,
+      StarRating = star_ratings,
+      VerifiedPurchase = verified_purchases,
+      stringsAsFactors = FALSE
+    )
+    
+    # Append to the main dataframe
+    all_reviews <- bind_rows(all_reviews, review_data)
+  }, silent = TRUE)
+}
+
+# Print the collected reviews
+print(all_reviews)
+
+```
+
+
 
 
