@@ -343,7 +343,11 @@ scrape_amazon_products <- function(base_url, category, num_products = 30) {
     
     ratings <- page %>% 
       html_nodes('span.a-icon-alt') %>% 
-      html_text(trim = TRUE)
+      html_text(trim = TRUE) %>%
+      str_extract("\\d\\.\\d") %>%  
+      as.numeric()
+    
+
 
     reviews <- page %>%
       html_nodes('.s-link-style .s-underline-text') %>% 
@@ -396,7 +400,139 @@ headset_products <- scrape_amazon_products(headset_url, "Headset", 30)
 all_products <- bind_rows(motherboard_products, monitor_products, mouse_products, keyboard_products, headset_products)
 
 all_products
+
+write.csv(all_products, "Amazon_products.csv")
 ```
+6. The data we have extracted is  that we scrape 30 products from each 6 categories and we get the product name, price, category, ratings, reviews, and description of every product.
+
+7. The use case for our data that we have extracted is for market research.
+
+8. The graphs provide insights into pricing trends, customer satisfaction, and product popularity across categories, helping identify competitive pricing and top-performing products. They also reveal correlations between ratings and reviews, indicating which products are both highly rated and widely purchased.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Load data
+all_products <- read.csv("Amazon_products.csv")
+
+# Clean up price data (remove $ and convert to numeric)
+all_products$Price <- as.numeric(gsub("[$,]", "", all_products$Price))
+
+# Filter out NA or missing data
+all_products <- all_products %>%
+  filter(!is.na(Price), !is.na(Ratings), !is.na(Reviews))
+
+# Graph 1: Price Distribution
+ggplot(all_products, aes(x = Price)) +
+  geom_histogram(binwidth = 50, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Product Prices", x = "Price ($)", y = "Count") +
+  theme_minimal()
+
+# Graph 2: Average Ratings by Category
+avg_ratings <- all_products %>%
+  group_by(Category) %>%
+  summarize(AverageRating = mean(Ratings, na.rm = TRUE))
+
+ggplot(avg_ratings, aes(x = Category, y = AverageRating, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Average Ratings by Category", x = "Category", y = "Average Rating") +
+  theme_minimal()
+
+# Graph 3: Number of Reviews by Category
+total_reviews <- all_products %>%
+  group_by(Category) %>%
+  summarize(TotalReviews = sum(as.numeric(gsub("[^0-9]", "", Reviews)), na.rm = TRUE))
+
+ggplot(total_reviews, aes(x = Category, y = TotalReviews, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Total Number of Reviews by Category", x = "Category", y = "Total Reviews") +
+  theme_minimal()
+
+# Graph 4: Correlation Between Ratings and Reviews
+ggplot(all_products, aes(x = Ratings, y = as.numeric(gsub("[^0-9]", "", Reviews)))) +
+  geom_point(alpha = 0.6, color = "purple") +
+  labs(title = "Correlation Between Ratings and Reviews", x = "Ratings", y = "Number of Reviews") +
+  theme_minimal()
+
+```
+9.  
+```{r}
+library(ggplot2)
+
+ggplot(all_products, aes(x = Price, y = Ratings, color = Category)) +
+  geom_point() +
+  facet_wrap(~ Category, scales = "free") +
+  labs(title = "Ratings vs Price for Each Category",
+       x = "Price ($)",
+       y = "Ratings") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+10. Ranking by ratings sorts products from the highest to the lowest-rated, showcasing the top customer-reviewed items. Ranking by price can be done in ascending order (cheapest to most expensive) or descending order (most expensive to cheapest), helping users select products based on their budget.
+
+```{r}
+
+all_products <- read.csv("Amazon_products.csv")
+
+
+str(all_products)
+
+```
+```{r}
+# Load the CSV file containing the products
+all_products <- read.csv("Amazon_products.csv")
+
+# Ensure the Ratings column is numeric for sorting
+all_products$Ratings <- as.numeric(all_products$Ratings)
+
+# Check the structure to make sure Ratings are correctly formatted
+str(all_products)
+
+library(dplyr)
+
+# Rank products by Ratings in descending order
+ranked_by_ratings <- all_products %>%
+  arrange(desc(Ratings))
+
+# View the top-ranked products based on ratings
+head(ranked_by_ratings, 150)  # Display the top 10 highest-rated products
+
+
+```
+
+```{r}
+# Load the CSV file containing the products
+all_products <- read.csv("Amazon_products.csv")
+
+# Clean and convert the Price column to numeric (if it includes "$" signs)
+all_products$Price <- as.numeric(gsub("\\$", "", all_products$Price))
+
+# Check the structure to ensure Price is correctly formatted
+str(all_products)
+
+library(dplyr)
+
+# Rank products by Price in ascending order (cheapest first)
+ranked_by_price_ascending <- all_products %>%
+  arrange(Price)
+
+# Alternatively, rank products by Price in descending order (most expensive first)
+ranked_by_price_descending <- all_products %>%
+  arrange(desc(Price))
+
+# View the top-ranked products based on price (descending order)
+head(ranked_by_price_descending, 150)  # Display top 10 most expensive products
+
+```
+
+
+
+
+
+
 
 
 ```{r}
