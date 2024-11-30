@@ -26,6 +26,7 @@ library(stringr)
 
 1.
 ```{r}
+library(polite)
 polite::use_manners(save_as = 'polite_scrape.R')
 
 url <- 'https://www.imdb.com/chart/toptv/?ref_=nv_tvv_250'
@@ -306,6 +307,7 @@ ggplot(tv_shows_by_year, aes(x = Release_Year, y = Number_of_Shows)) +
 
 
 ```{r}
+library(polite)
 polite::use_manners(save_as = 'polite_scrape.R')
 
 url <- 'https://www.amazon.com'
