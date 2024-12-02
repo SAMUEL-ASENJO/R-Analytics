@@ -22,6 +22,8 @@ library(kableExtra)
 
 library(ggplot2)
 library(stringr)
+library(tinytex)
+library(latexpdf)
 ```
 
 1.
@@ -163,7 +165,7 @@ top_50_shows <- imdb_top_tv_shows %>%
 # Print the top 50 shows
 print(top_50_shows)
 
-write.csv(top_50_shows, "Top_50_shows.csv")
+#write.csv(top_50_shows, "Top_50_shows.csv")
 
 ```
 
@@ -276,7 +278,7 @@ for (link in links) {
 print(all_reviews)
 
 
-write.csv(all_reviews, "IMDb_reviews.csv")
+#write.csv(all_reviews, "IMDb_reviews.csv")
 
 
 ```
@@ -338,6 +340,11 @@ scrape_amazon_products <- function(base_url, category, num_products = 30) {
       html_text(trim = TRUE)
     
     product_titles <- product_titles[product_titles != "Check each product page for other buying options."]
+    product_titles <- product_titles[product_titles != " Mouse - Season 1"]
+    product_titles <- product_titles[product_titles != "2021"]
+    product_titles <- product_titles[product_titles != "Sep 25, 2015"]
+    product_titles <- product_titles[product_titles != " Jan 1, 2023"]
+    product_titles <- product_titles[product_titles != "Mar 1, 2022"]
 
     price <- page %>% 
       html_nodes('.a-price .a-offscreen') %>% 
@@ -360,6 +367,11 @@ scrape_amazon_products <- function(base_url, category, num_products = 30) {
       html_text(trim = TRUE)
     
     descriptions <- descriptions[descriptions != "Check each product page for other buying options."]
+    descriptions <- descriptions[descriptions != " Mouse - Season 1"]
+    descriptions <- descriptions[descriptions != "2021"]
+    descriptions <- descriptions[descriptions != "Sep 25, 2015"]
+    descriptions <- descriptions[descriptions != " Jan 1, 2023"]
+    descriptions <- descriptions[descriptions != "Mar 1, 2022"]
     
     min_length <- min(length(product_titles), length(price), length(ratings), length(descriptions), length(reviews))
     if (min_length == 0) break  # Exit if no products are found on the page
@@ -403,7 +415,7 @@ all_products <- bind_rows(motherboard_products, monitor_products, mouse_products
 
 all_products
 
-write.csv(all_products, "Amazon_products.csv")
+#write.csv(all_products, "Amazon_products.csv")
 ```
 6. The data we have extracted is  that we scrape 30 products from each 6 categories and we get the product name, price, category, ratings, reviews, and description of every product.
 
@@ -599,6 +611,11 @@ for (i in seq_along(product_links)) {
     review_titles <- reviews %>%
       html_nodes(".review-title span") %>%
       html_text(trim = TRUE)
+     review_titles <- review_titles[review_titles != "5.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "4.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "1.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "3.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "2.0 out of 5 stars"]
     
     # Extract review comments
     review_comments <- reviews %>%
@@ -646,7 +663,7 @@ for (i in seq_along(product_links)) {
 
 print(all_reviews)
 
-write.csv(all_reviews, "Mouse_reviews.csv")
+#write.csv(all_reviews, "Mouse_reviews.csv")
 
 ```
 
@@ -708,6 +725,11 @@ for (i in seq_along(product_links)) {
     review_titles <- reviews %>%
       html_nodes(".review-title span") %>%
       html_text(trim = TRUE)
+     review_titles <- review_titles[review_titles != "5.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "4.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "1.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "3.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "2.0 out of 5 stars"]
     
     review_comments <- reviews %>%
       html_nodes(".review-text-content span") %>%
@@ -749,7 +771,7 @@ for (i in seq_along(product_links)) {
 
 print(all_reviews)
 
-write.csv(all_reviews, "Motherboard_reviews.csv")
+#write.csv(all_reviews, "Motherboard_reviews.csv")
 
 
 ```
@@ -811,6 +833,11 @@ for (i in seq_along(product_links)) {
     review_titles <- reviews %>%
       html_nodes(".review-title span") %>%
       html_text(trim = TRUE)
+     review_titles <- review_titles[review_titles != "5.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "4.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "1.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "3.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "2.0 out of 5 stars"]
     
     review_comments <- reviews %>%
       html_nodes(".review-text-content span") %>%
@@ -852,7 +879,7 @@ for (i in seq_along(product_links)) {
 
 print(all_reviews)
 
-write.csv(all_reviews, "Keyboard_reviews.csv")
+#write.csv(all_reviews, "Keyboard_reviews.csv")
 
 ```
 ```{r}
@@ -912,6 +939,11 @@ for (i in seq_along(product_links)) {
     review_titles <- reviews %>%
       html_nodes(".review-title span") %>%
       html_text(trim = TRUE)
+     review_titles <- review_titles[review_titles != "5.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "4.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "1.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "3.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "2.0 out of 5 stars"]
     
     review_comments <- reviews %>%
       html_nodes(".review-text-content span") %>%
@@ -953,7 +985,7 @@ for (i in seq_along(product_links)) {
 
 print(all_reviews)
 
-write.csv(all_reviews, "Monitor_reviews.csv")
+#write.csv(all_reviews, "Monitor_reviews.csv")
 
 
 ```
@@ -1018,6 +1050,11 @@ for (i in seq_along(product_links)) {
     review_titles <- reviews %>%
       html_nodes(".review-title span") %>%
       html_text(trim = TRUE)
+     review_titles <- review_titles[review_titles != "5.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "4.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "1.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "3.0 out of 5 stars"]
+    review_titles <- review_titles[review_titles != "2.0 out of 5 stars"]
     
     review_comments <- reviews %>%
       html_nodes(".review-text-content span") %>%
@@ -1059,7 +1096,7 @@ for (i in seq_along(product_links)) {
 
 print(all_reviews)
 
-write.csv(all_reviews, "Headset_reviews.csv")
+#write.csv(all_reviews, "Headset_reviews.csv")
 
 
 ```
