@@ -343,8 +343,10 @@ scrape_amazon_products <- function(base_url, category, num_products = 30) {
     product_titles <- product_titles[product_titles != " Mouse - Season 1"]
     product_titles <- product_titles[product_titles != "2021"]
     product_titles <- product_titles[product_titles != "Sep 25, 2015"]
-    product_titles <- product_titles[product_titles != " Jan 1, 2023"]
+    product_titles <- product_titles[product_titles != "Jan 1, 2023"]
     product_titles <- product_titles[product_titles != "Mar 1, 2022"]
+      product_titles <- product_titles[product_titles != "May 19, 2024"]
+
 
     price <- page %>% 
       html_nodes('.a-price .a-offscreen') %>% 
@@ -367,11 +369,13 @@ scrape_amazon_products <- function(base_url, category, num_products = 30) {
       html_text(trim = TRUE)
     
     descriptions <- descriptions[descriptions != "Check each product page for other buying options."]
-    descriptions <- descriptions[descriptions != " Mouse - Season 1"]
+    descriptions <- descriptions[descriptions != "Mouse - Season 1"]
     descriptions <- descriptions[descriptions != "2021"]
-    descriptions <- descriptions[descriptions != "Sep 25, 2015"]
-    descriptions <- descriptions[descriptions != " Jan 1, 2023"]
-    descriptions <- descriptions[descriptions != "Mar 1, 2022"]
+    descriptions <- descriptions[descriptions != "Sep 22, 2024"]
+    descriptions <- descriptions[descriptions != "Jan 1, 2023"]
+    descriptions <- descriptions[descriptions != "May 19, 2024"]
+      descriptions <- descriptions[descriptions != "Sep 25, 2015"]
+
     
     min_length <- min(length(product_titles), length(price), length(ratings), length(descriptions), length(reviews))
     if (min_length == 0) break  # Exit if no products are found on the page
